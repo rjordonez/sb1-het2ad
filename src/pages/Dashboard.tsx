@@ -1,10 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Star } from 'lucide-react';
+import { ArrowRight, Star, Trash2 } from 'lucide-react';
+
+interface Report {
+  id: number;
+  name: string;
+  fluency: number;
+  pronunciation: number;
+  intonationAndStress: string;
+  sentenceStructure: number;
+  grammar: number;
+  sessionId: string;
+}
 
 export default function Dashboard() {
-  const [reports, setReports] = useState([]);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [starredReports, setStarredReports] = useState<number[]>([]);
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
 
   // Fetch data from Google Sheets
   useEffect(() => {
@@ -18,18 +31,18 @@ export default function Dashboard() {
           `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${RANGE}?key=${API_KEY}`
         );
 
-        const rows = response.data.values;
+        const rows = response.data.values || [];
 
         // Parse the data from the spreadsheet
-        const parsedReports = rows.map((row, index) => ({
+        const parsedReports = rows.map((row: any[], index: number) => ({
           id: index + 1, // Generate a report ID dynamically
           name: `Report ${index + 1}`,
-          fluency: row[2] || 0, // Fluency
-          pronunciation: row[3] || 0, // Pronunciation
+          fluency: Number(row[2]) || 0, // Fluency
+          pronunciation: Number(row[3]) || 0, // Pronunciation
           intonationAndStress: row[4] || 'Not Available', // Intonation & Stress
-          sentenceStructure: row[5] || 0, // Sentence Structure
-          grammar: row[6] || 0, // Grammar
-          sessionId: row[1] || 'Unknown' // Session ID
+          sentenceStructure: Number(row[5]) || 0, // Sentence Structure
+          grammar: Number(row[6]) || 0, // Grammar
+          sessionId: row[1] || 'Unknown', // Session ID
         }));
 
         setReports(parsedReports);
@@ -41,25 +54,88 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
+  // Function to handle star click
+  const handleStarClick = (reportId: number) => {
+    setStarredReports((prevStarredReports) => {
+      if (prevStarredReports.includes(reportId)) {
+        // If already starred, remove it
+        return prevStarredReports.filter((id) => id !== reportId);
+      } else {
+        // If not starred, add it
+        return [...prevStarredReports, reportId];
+      }
+    });
+  };
+
+  // Function to handle delete report
+  const handleDeleteReport = (reportId: number) => {
+    setReports((prevReports) => {
+      const updatedReports = prevReports.filter((report) => report.id !== reportId);
+
+      // Reassign report IDs and names after deletion
+      return updatedReports.map((report, index) => ({
+        ...report,
+        id: index + 1,
+        name: `Report ${index + 1}`,
+      }));
+    });
+
+    // Also remove from starredReports if it's starred
+    setStarredReports((prevStarredReports) =>
+      prevStarredReports.filter((id) => id !== reportId)
+    );
+  };
+
+  // Toggle edit mode
+  const toggleEditMode = () => {
+    setIsEditMode((prev) => !prev);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-gray-900">Speaking Reports</h1>
+        <button
+          onClick={toggleEditMode}
+          className="text-indigo-600 font-medium hover:underline focus:outline-none"
+        >
+          {isEditMode ? 'Done' : 'Edit'}
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {reports.map((report) => (
           <Link
             key={report.id}
-            to={`/report/${report.id}`}
-            className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6 border border-gray-100"
+            to={isEditMode ? '#' : `/report/${report.id}`}
+            className={`bg-white rounded-xl shadow-sm transition-shadow p-6 border ${
+              isEditMode ? 'border-red-500' : 'border-gray-100 hover:shadow-md'
+            }`}
           >
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">{report.name}</h3>
                 <p className="text-sm text-gray-500">Session ID: {report.sessionId}</p>
               </div>
-              <Star className={`h-6 w-6 ${report.fluency >= 90 ? 'text-yellow-400' : 'text-gray-300'}`} />
+              {isEditMode ? (
+                <Trash2
+                  onClick={(e) => {
+                    e.preventDefault(); // Prevent navigation if the icon is inside a Link
+                    handleDeleteReport(report.id);
+                  }}
+                  className="h-6 w-6 text-red-500 cursor-pointer"
+                />
+              ) : (
+                <Star
+                  onClick={(e) => {
+                    e.preventDefault(); // Prevent navigation if the star is inside a Link
+                    handleStarClick(report.id);
+                  }}
+                  className={`h-6 w-6 cursor-pointer ${
+                    starredReports.includes(report.id) ? 'text-yellow-400' : 'text-gray-300'
+                  }`}
+                />
+              )}
             </div>
 
             <div className="space-y-3">
@@ -89,7 +165,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Ensure Grammar is displayed here */}
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Grammar</span>
                 <div className="flex items-center">
@@ -104,12 +179,14 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="mt-4 flex justify-end">
-              <div className="flex items-center text-indigo-600 text-sm font-medium">
-                View Details
-                <ArrowRight className="ml-1 h-4 w-4" />
+            {!isEditMode && (
+              <div className="mt-4 flex justify-end">
+                <div className="flex items-center text-indigo-600 text-sm font-medium">
+                  View Details
+                  <ArrowRight className="ml-1 h-4 w-4" />
+                </div>
               </div>
-            </div>
+            )}
           </Link>
         ))}
       </div>

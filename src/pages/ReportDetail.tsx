@@ -17,49 +17,69 @@ import {
 } from 'recharts';
 
 export default function ReportDetail() {
-  const { id } = useParams();
-  const [report, setReport] = useState(null);
-  const [timelineData, setTimelineData] = useState([]);
+  const { id } = useParams<{ id: string }>();
+  const [report, setReport] = useState<any>(null);
+  const [timelineData, setTimelineData] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchReport = async () => {
       try {
         const SPREADSHEET_ID = '13uUD-6Oz56MQpQ2BD07kSWCGVRZ2w_Wy3oI8pe7LNqc';
-        const RANGE = 'Sheet1!A2:G100'; // Adjust range to include all data
+        const RANGE = 'Sheet1!A2:G1000'; // Extended range to include more data
         const API_KEY = 'AIzaSyBu54-s1mBVoyK6H9KOkco8Q1q6HWlu7es';
 
         const response = await axios.get(
           `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${RANGE}?key=${API_KEY}`
         );
 
-        const rows = response.data.values;
+        const rows = response.data.values || [];
 
         // Parse the data from the spreadsheet
-        const parsedReports = rows.map((row, index) => ({
-          id: index + 1, // Generate a report ID dynamically
-          name: row[0] || 'Unknown', // Name
-          sessionId: row[1] || 'Unknown', // Session ID
-          fluency: Number(row[2]) || 0, // Fluency
-          pronunciation: Number(row[3]) || 0, // Pronunciation
-          intonationAndStress: row[4] || 'Not Available', // Intonation & Stress
-          sentenceStructure: Number(row[5]) || 0, // Sentence Structure
-          grammar: Number(row[6]) || 0, // Grammar
-        }));
+        const parsedReports = rows.map((row: any[], index: number) => {
+          const rawName = row[0] || 'Unknown';
+          // Normalize the name to remove variable parts
+          const nameMatch = rawName.match(/^(Sofia-\w+)/);
+          const name = nameMatch ? nameMatch[1] : rawName;
 
+          const sessionId = row[1] || 'Unknown'; // e.g., 'session123'
+          // Extract the session number from sessionId
+          const sessionNumberMatch = sessionId.match(/session(\d+)/);
+          const sessionNumber = sessionNumberMatch ? parseInt(sessionNumberMatch[1], 10) : index + 1;
+
+          return {
+            id: index + 1, // Index-based ID
+            rawName: rawName, // Original name
+            name: name, // Normalized name
+            sessionId: sessionId, // Session ID
+            sessionNumber: sessionNumber, // Extracted session number
+            fluency: Number(row[2]) || 0, // Fluency
+            pronunciation: Number(row[3]) || 0, // Pronunciation
+            intonationAndStress: row[4] || 'Not Available', // Intonation & Stress
+            sentenceStructure: Number(row[5]) || 0, // Sentence Structure
+            grammar: Number(row[6]) || 0, // Grammar
+          };
+        });
+
+        // Sort parsedReports based on sessionNumber
+        parsedReports.sort((a, b) => a.sessionNumber - b.sessionNumber);
+
+        // Find the selected report using id
         const reportId = parseInt(id, 10);
         const selectedReport = parsedReports.find((r) => r.id === reportId);
 
         if (selectedReport) {
           setReport(selectedReport);
 
-          // Filter all sessions for the same user
+          // Filter sessions for the same user up to the selected sessionNumber
           const userSessions = parsedReports.filter(
-            (r) => r.name === selectedReport.name
+            (r) =>
+              r.name === selectedReport.name &&
+              r.sessionNumber <= selectedReport.sessionNumber
           );
 
           // Prepare timeline data
-          const timeline = userSessions.map((session, idx) => ({
-            session: idx + 1,
+          const timeline = userSessions.map((session) => ({
+            session: session.sessionNumber,
             fluency: session.fluency,
             pronunciation: session.pronunciation,
             sentenceStructure: session.sentenceStructure,
@@ -112,7 +132,7 @@ export default function ReportDetail() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Speaking Report</h1>
             <p className="text-gray-500">Session ID: {report.sessionId}</p>
-            <p className="text-gray-500">Name: {report.name}</p>
+            <p className="text-gray-500">Name: {report.rawName}</p>
           </div>
         </div>
 
@@ -126,9 +146,10 @@ export default function ReportDetail() {
                   <XAxis
                     dataKey="session"
                     label={{ value: 'Session', position: 'bottom' }}
+                    tickFormatter={(value) => `Session ${value}`}
                   />
                   <YAxis domain={[0, 100]} />
-                  <Tooltip />
+                  <Tooltip formatter={(value: any) => `${value}%`} />
                   <Line
                     type="monotone"
                     dataKey="fluency"
@@ -193,7 +214,7 @@ export default function ReportDetail() {
                     <p className="text-gray-600 capitalize">
                       {key.replace(/([A-Z])/g, ' $1').trim()}
                     </p>
-                    <p className="text-xl font-semibold text-gray-900">{value}</p>
+                    <p className="text-xl font-semibold text-gray-900">{value}%</p>
                   </div>
                 );
               }
